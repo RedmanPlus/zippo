@@ -3,6 +3,7 @@ const glfw = @import("mach-glfw");
 const gl = @import("gl");
 
 const render_object = @import("render/render_object.zig");
+const layout = @import("layout.zig");
 
 const Vertex = @import("render/vertex.zig").Vertex;
 const Rectangle = @import("render/rectangle.zig").Rectangle;
@@ -41,12 +42,12 @@ pub const App = struct {
     }
 
     pub fn deinit(self: *App) void {
-        glfw.terminate();
-        self.window.destroy();
         gl.makeProcTableCurrent(null);
+        self.window.destroy();
+        glfw.terminate();
     }
 
-    pub fn run(self: *App, objects: []const render_object.RenderObject) !void {
+    pub fn run(self: *App, objects: *layout.Node) !void {
         while (true) {
             glfw.waitEvents();
             if (self.window.shouldClose()) break;
@@ -56,14 +57,24 @@ pub const App = struct {
 
             gl.ClearBufferfv(gl.COLOR, 0, &[4]f32{ 1, 1, 1, 1 });
 
-            for (objects) |obj| {
-                try obj.render();
-            }
+            try objects.render();
 
             self.window.swapBuffers();
         }
     }
 };
+
+fn RecContainer(comptime capacity: u32) type {
+    return struct {
+        recs: [capacity]*layout.Node,
+
+        pub fn render(self: RecContainer(capacity)) anyerror!void {
+            for (self.recs) |rec| {
+                try rec.render();
+            }
+        }
+    };
+}
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -79,14 +90,41 @@ pub fn main() !void {
         .fragment_path = "src/glsl/triangle_frag.glsl",
         .texture_path = "src/textures/wall.jpg",
         .model_vertices = [4]Vertex{
-            .{ .position = .{ 0.5, 0.5, 0 }, .color = .{ 1, 1, 1 }, .texture = .{ 1, 1 } },
-            .{ .position = .{ 0.5, -0.5, 0 }, .color = .{ 1, 1, 1 }, .texture = .{ 1, 0 } },
-            .{ .position = .{ -0.5, -0.5, 0 }, .color = .{ 1, 1, 1 }, .texture = .{ 0, 0 } },
-            .{ .position = .{ -0.5, 0.5, 0 }, .color = .{ 1, 1, 1 }, .texture = .{ 0, 1 } },
+            .{ .position = .{ -0.9, 0.5, 0 }, .color = .{ 1, 1, 1 }, .texture = .{ 1, 1 } },
+            .{ .position = .{ -0.9, -0.5, 0 }, .color = .{ 1, 1, 1 }, .texture = .{ 1, 0 } },
+            .{ .position = .{ -0.1, -0.5, 0 }, .color = .{ 1, 1, 1 }, .texture = .{ 0, 0 } },
+            .{ .position = .{ -0.1, 0.5, 0 }, .color = .{ 1, 1, 1 }, .texture = .{ 0, 1 } },
         },
         .indecies = [6]u32{ 0, 1, 3, 1, 2, 3 },
     });
     defer rec1.deinit();
-    const obj = rec1.toObject();
-    try app.run(&[_]render_object.RenderObject{obj});
+    var obj1 = rec1.toObject();
+    var node_rec1 = layout.Node.make(&obj1);
+
+    var rec2 = try Rectangle.init(&alloc, .{
+        .vertex_path = "src/glsl/triangle_vert.glsl",
+        .fragment_path = "src/glsl/triangle_frag.glsl",
+        .texture_path = "src/textures/wall.jpg",
+        .model_vertices = [4]Vertex{
+            .{ .position = .{ 0.1, 0.5, 0 }, .color = .{ 1, 1, 1 }, .texture = .{ 1, 1 } },
+            .{ .position = .{ 0.1, -0.5, 0 }, .color = .{ 1, 1, 1 }, .texture = .{ 1, 0 } },
+            .{ .position = .{ 0.9, -0.5, 0 }, .color = .{ 1, 1, 1 }, .texture = .{ 0, 0 } },
+            .{ .position = .{ 0.9, 0.5, 0 }, .color = .{ 1, 1, 1 }, .texture = .{ 0, 1 } },
+        },
+        .indecies = [6]u32{ 0, 1, 3, 1, 2, 3 },
+    });
+    defer rec2.deinit();
+    var obj2 = rec2.toObject();
+    var node_rec2 = layout.Node.make(&obj2);
+
+    var rec_container = RecContainer(2){
+        .recs = [_]*layout.Node{
+            &node_rec1,
+            &node_rec2,
+        },
+    };
+
+    var node_rec_container = layout.Node.make(&rec_container);
+
+    try app.run(&node_rec_container);
 }
